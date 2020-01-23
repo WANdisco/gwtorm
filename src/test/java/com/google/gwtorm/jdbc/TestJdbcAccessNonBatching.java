@@ -42,6 +42,12 @@ public class TestJdbcAccessNonBatching extends AbstractTestJdbcAccess {
   }
 
   @Override
+  protected void assertCorrectUpdatingRetries(PreparedStatement ps, int retries, int... ids)
+          throws SQLException {
+    assertUsedNonBatchingOnly(ps, ids);
+  }
+
+  @Override
   protected void assertCorrectAttempting(PreparedStatement ps, int... ids)
       throws SQLException {
     assertUsedNonBatchingOnly(ps, ids);

@@ -14,42 +14,44 @@
 
 package com.google.gwtorm.jdbc;
 
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
-import static org.mockito.Mockito.mock;
-
 import com.google.gwtorm.schema.sql.SqlDialect;
-
+import static java.lang.Boolean.FALSE;
+import static java.lang.Boolean.TRUE;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 @RunWith(Parameterized.class)
-public class TestJdbcAccessBatching extends AbstractTestJdbcAccess {
+public class TestJdbcAccessTotalRetries extends AbstractTestJdbcAccess {
 
-  public TestJdbcAccessBatching(IterableProvider<Data> dataProvider)
-      throws SQLException {
-    super(dataProvider);
+  public TestJdbcAccessTotalRetries(IterableProvider<Data> dataProvider)
+          throws SQLException {
+    super(dataProvider,5,3);
   }
 
   @Override
   protected void assertCorrectUpdating(PreparedStatement ps,
-      int ... ids) throws SQLException {
-    assertUsedBatchingOnly(ps, ids);
+                                       int ... ids) throws SQLException {
+    assertUsedBatchingOnly(ps,ids);
   }
 
   @Override
-  protected void assertCorrectUpdatingRetries(PreparedStatement ps,int retries,
-                                       int ... ids) throws SQLException {
-    assertUsedBatchingOnly(ps, ids);
+  protected void assertCorrectUpdatingRetries(PreparedStatement ps, int retries, int... ids) throws SQLException {
+    assertUsedBatchingOnly(retries,ps,ids);
   }
 
   @Override
   protected void assertCorrectAttempting(PreparedStatement ps,
-      int ... ids) throws SQLException {
+                                         int ... ids) throws SQLException {
     assertUsedBatchingOnly(ps, ids);
   }
+
 
 
   @Override

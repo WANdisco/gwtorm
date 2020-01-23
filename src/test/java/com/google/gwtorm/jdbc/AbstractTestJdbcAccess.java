@@ -116,6 +116,26 @@ public abstract class AbstractTestJdbcAccess {
     classUnderTest = createJdbcAccess(dialect, conn);
   }
 
+  public AbstractTestJdbcAccess(IterableProvider<Data> dataProvider, int retries)
+          throws SQLException {
+    noData = dataProvider.createIterable();
+    oneRow = dataProvider.createIterable(new Data(1));
+    twoRows = dataProvider.createIterable(new Data(1), new Data(2));
+    conn = mock(Connection.class);
+    dialect = createDialect();
+    classUnderTest = createJdbcAccess(dialect, conn, retries);
+  }
+
+  public AbstractTestJdbcAccess(IterableProvider<Data> dataProvider, int retries,int timeout)
+          throws SQLException {
+    noData = dataProvider.createIterable();
+    oneRow = dataProvider.createIterable(new Data(1));
+    twoRows = dataProvider.createIterable(new Data(1), new Data(2));
+    conn = mock(Connection.class);
+    dialect = createDialect();
+    classUnderTest = createJdbcAccess(dialect, conn, retries,timeout);
+  }
+
   protected abstract SqlDialect createDialect() throws SQLException;
 
   private PreparedStatement stubStatementWithUpdateCounts(String command,
@@ -161,6 +181,25 @@ public abstract class AbstractTestJdbcAccess {
     return classUnderTest;
   }
 
+  private static JdbcAccess<Data, Data.DataKey> createJdbcAccess(
+          final SqlDialect dialect, Connection conn, int retries) {
+    JdbcSchema schema = setupSchema(dialect, conn);
+
+    JdbcAccess<Data, Data.DataKey> classUnderTest = new DataJdbcAccess(schema);
+    classUnderTest.setDeadlockRetry(retries);
+    return classUnderTest;
+  }
+
+  private static JdbcAccess<Data, Data.DataKey> createJdbcAccess(
+          final SqlDialect dialect, Connection conn, int retries, int timeout) {
+    JdbcSchema schema = setupSchema(dialect, conn);
+
+    JdbcAccess<Data, Data.DataKey> classUnderTest = new DataJdbcAccess(schema);
+    classUnderTest.setDeadlockRetry(retries);
+    classUnderTest.setDeadlockRetryTimeOut(timeout);
+    return classUnderTest;
+  }
+
   private static JdbcSchema setupSchema(final SqlDialect dialect,
       final Connection conn) {
     @SuppressWarnings("rawtypes")
@@ -177,13 +216,21 @@ public abstract class AbstractTestJdbcAccess {
     }
   }
 
+
+
   protected static void assertUsedBatchingOnly(PreparedStatement ps, int... ids)
       throws SQLException {
+    assertUsedBatchingOnly(1,ps,ids);
+  }
+
+  protected static void assertUsedBatchingOnly(int retry, PreparedStatement ps, int... ids)
+          throws SQLException {
     verify(ps, times(ids.length)).addBatch();
-    verify(ps).executeBatch();
+    verify(ps,times(retry)).executeBatch();
     verify(ps, never()).executeUpdate();
     assertExpectedIdsUsed(ps, ids);
   }
+
 
   protected static void assertUsedNonBatchingOnly(PreparedStatement ps,
       int... ids) throws SQLException {
@@ -198,6 +245,9 @@ public abstract class AbstractTestJdbcAccess {
   }
 
   protected abstract void assertCorrectUpdating(PreparedStatement ps,
+      int... ids) throws SQLException;
+
+  protected abstract void assertCorrectUpdatingRetries(PreparedStatement ps, int retries,
       int... ids) throws SQLException;
 
   protected abstract void assertCorrectAttempting(PreparedStatement ps,
@@ -280,7 +330,7 @@ public abstract class AbstractTestJdbcAccess {
     } catch (OrmConcurrencyException e) {
       // expected
     }
-    assertCorrectUpdating(update, 1, 2);
+    assertCorrectUpdatingRetries(update,classUnderTest.getDeadlockRetryCount() + 1, 1, 2);
   }
 
   @Test
@@ -413,7 +463,7 @@ public abstract class AbstractTestJdbcAccess {
       // expected
     }
 
-    assertCorrectUpdating(delete, 1, 2);
+    assertCorrectUpdatingRetries(delete,classUnderTest.getDeadlockRetryCount() +1, 1, 2);
   }
 
   private static class Schema extends JdbcSchema {

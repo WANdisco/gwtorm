@@ -35,9 +35,24 @@ import java.util.List;
 public abstract class JdbcAccess<T, K extends Key<?>> extends
     AbstractAccess<T, K> {
   private final JdbcSchema schema;
+  private int GERRIT_MAX_DEADLOCK_RETRIES;
+  private int GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT;
 
   protected JdbcAccess(final JdbcSchema s) {
     schema = s;
+    setDeadlockRetry(Integer.parseInt(System.getProperty("GERRIT_MAX_DEADLOCK_RETRIES","0")));
+    setDeadlockRetryTimeOut(Integer.parseInt(System.getProperty("GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT","1")));
+  }
+
+  protected JdbcAccess(final JdbcSchema s, int retries) {
+    schema = s;
+    setDeadlockRetry(retries);
+  }
+
+  protected JdbcAccess(final JdbcSchema s, int retries,int retryTimeout) {
+    schema = s;
+    setDeadlockRetry(retries);
+    setDeadlockRetryTimeOut(retryTimeout);
   }
 
   @Override
@@ -198,7 +213,7 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
   }
 
   private void insertAsBatch(final Iterable<T> instances) throws SQLException,
-      OrmConcurrencyException {
+          OrmException {
     PreparedStatement ps = null;
     try {
       int cnt = 0;
@@ -210,8 +225,8 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
         ps.addBatch();
         cnt++;
       }
-      execute(ps, cnt);
-    } finally {
+      attemptBatchExecute(ps, cnt);
+      } finally {
       if (ps != null) {
         ps.close();
       }
@@ -257,7 +272,7 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
   }
 
   private void updateAsBatch(final Iterable<T> instances) throws SQLException,
-      OrmConcurrencyException {
+          OrmException {
     PreparedStatement ps = null;
     try {
       int cnt = 0;
@@ -269,7 +284,7 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
         ps.addBatch();
         cnt++;
       }
-      execute(ps, cnt);
+       attemptBatchExecute(ps, cnt);
     } finally {
       if (ps != null) {
         ps.close();
@@ -421,7 +436,7 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
   }
 
   private void deleteAsBatch(final Iterable<T> instances) throws SQLException,
-      OrmConcurrencyException {
+          OrmException {
     PreparedStatement ps = null;
     try {
       int cnt = 0;
@@ -433,7 +448,7 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
         ps.addBatch();
         cnt++;
       }
-      execute(ps, cnt);
+        attemptBatchExecute(ps, cnt);
     } finally {
       if (ps != null) {
         ps.close();
@@ -464,6 +479,47 @@ public abstract class JdbcAccess<T, K extends Key<?>> extends
       }
     }
     return schema.getDialect().convertError(op, getRelationName(), err);
+  }
+
+  private void attemptBatchExecute(PreparedStatement ps, int cnt)
+          throws SQLException, OrmException {
+    for (int retryIndex = 0; retryIndex <= GERRIT_MAX_DEADLOCK_RETRIES; retryIndex++) {
+      try {
+        execute(ps, cnt);
+        break;
+      } catch (OrmConcurrencyException err) {
+        if (retryIndex >= GERRIT_MAX_DEADLOCK_RETRIES) {
+          throw err;
+        } else {
+          try {
+            /* Increment sleep to give OS time to schedule thread
+             * Default is 1ms wait incremented by retry count
+             * GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT can be set to 0 to iterate with no delay.
+             */
+            Thread.sleep((GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT * retryIndex));
+          } catch (InterruptedException e) {
+            //Throw to ORM to indicate issue in ORM class
+            throw new OrmException("Exception occurred during retry", e);
+          }
+        }
+      }
+    }
+  }
+
+  public void setDeadlockRetry(int retries) {
+    this.GERRIT_MAX_DEADLOCK_RETRIES = retries;
+  }
+
+  public void setDeadlockRetryTimeOut(int retryTimeOut) {
+    this.GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT = retryTimeOut;
+  }
+
+  public int getDeadlockRetryCount() {
+    return GERRIT_MAX_DEADLOCK_RETRIES;
+  }
+
+  public int getDeadlockRetryTimeOut() {
+    return GERRIT_MAX_DEADLOCK_RETRY_TIMEOUT;
   }
 
   protected abstract T newEntityInstance();

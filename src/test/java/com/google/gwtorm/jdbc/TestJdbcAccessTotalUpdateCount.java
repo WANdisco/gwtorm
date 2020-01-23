@@ -44,6 +44,11 @@ public class TestJdbcAccessTotalUpdateCount extends AbstractTestJdbcAccess {
       throws SQLException {
     verify(dialect).executeBatch(ps);
   }
+  @Override
+  protected void assertCorrectUpdatingRetries(PreparedStatement ps,int retrie, int... ids)
+      throws SQLException {
+    verify(dialect).executeBatch(ps);
+  }
 
   @Override
   protected void assertCorrectAttempting(PreparedStatement ps, int... ids)
